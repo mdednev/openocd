@@ -33,39 +33,97 @@
 #include <helper/binarybuffer.h>
 #include <target/algorithm.h>
 #include <target/armv7m.h>
+#include <target/riscv/riscv.h>
 
 #define MD_RST_CLK		0x40020000
+
+/* ARM-based MCU definitions */
 #define MD_PER_CLOCK		(MD_RST_CLK + 0x1C)
 #define MD_PER_CLOCK_EEPROM	(1 << 3)
 #define MD_PER_CLOCK_RST_CLK	(1 << 4)
 
-#define FLASH_REG_BASE	0x40018000
-#define FLASH_CMD	(FLASH_REG_BASE + 0x00)
-#define FLASH_ADR	(FLASH_REG_BASE + 0x04)
-#define FLASH_DI	(FLASH_REG_BASE + 0x08)
-#define FLASH_DO	(FLASH_REG_BASE + 0x0C)
-#define FLASH_KEY	(FLASH_REG_BASE + 0x10)
+/* RISCV-based MCU definitions (f.e. K1986VK025) */
+#define MD_PER2_CLOCK		(MD_RST_CLK + 0x1C)
+#define MD_PER2_CLOCK_EEPROM	(1 << 3)
+#define MD_PER2_CLOCK_RST_CLK	(1 << 4)
 
-#define FLASH_NVSTR	(1 << 13)
-#define FLASH_PROG	(1 << 12)
-#define FLASH_MAS1	(1 << 11)
-#define FLASH_ERASE	(1 << 10)
-#define FLASH_IFREN	(1 << 9)
-#define FLASH_SE	(1 << 8)
-#define FLASH_YE	(1 << 7)
-#define FLASH_XE	(1 << 6)
-#define FLASH_RD	(1 << 2)
-#define FLASH_WR	(1 << 1)
-#define FLASH_CON	(1 << 0)
-#define FLASH_DELAY_MASK	(7 << 3)
+#define FLASH_REG_BASE	0x40018000
+#define FLASH_CMD	(mdr_info->flash_base + 0x00)
+#define FLASH_ADR	(mdr_info->flash_base + 0x04)
+#define FLASH_DI	(mdr_info->flash_base + 0x08)
+#define FLASH_DO	(mdr_info->flash_base + 0x0C)
+#define FLASH_KEY	(mdr_info->flash_base + 0x10)
+
+#define FLASH_TMR	 (1 << 14)
+#define FLASH_NVSTR	 (1 << 13)
+#define FLASH_PROG	 (1 << 12)
+#define FLASH_MAS1	 (1 << 11)
+#define FLASH_ERASE	 (1 << 10)
+#define FLASH_IFREN	 (1 << 9)
+#define FLASH_SE	 (1 << 8)
+#define FLASH_YE	 (1 << 7)
+#define FLASH_XE	 (1 << 6)
+#define FLASH_RD	 (1 << 2)
+#define FLASH_WR	 (1 << 1)
+#define FLASH_CON	 (1 << 0)
+#define FLASH_DELAY_MASK (7 << 3)
 
 #define KEY		0x8AAA5551
 
 struct mdr_flash_bank {
-	bool probed;
-	unsigned int mem_type;
-	unsigned int page_count;
-	unsigned int sec_count;
+	bool          probed;
+	bool          riscv;
+	uint32_t      flash_base;
+	uint32_t      per_clock;
+	uint32_t      per_clock_eeprom;
+	uint32_t      per_clock_rst_clk;
+
+	unsigned int  mem_type;
+	unsigned int  page_count;
+	unsigned int  sec_count;
+
+	uint32_t      ext_flags;
+	const uint8_t *flash_write_code;
+	size_t        flash_write_code_size;
+};
+
+/* see contrib/loaders/flash/mdr32fx.S for src */
+static const uint8_t mdr32fx_flash_write_code[] = {
+	0x07, 0x68, 0x16, 0x68, 0x00, 0x2e, 0x2e, 0xd0, 0x55, 0x68, 0xb5, 0x42,
+	0xf9, 0xd0, 0x2e, 0x68, 0x44, 0x60, 0x86, 0x60, 0x17, 0x4e, 0x37, 0x43,
+	0x07, 0x60, 0x05, 0x26, 0x00, 0xf0, 0x25, 0xf8, 0x15, 0x4e, 0x37, 0x43,
+	0x07, 0x60, 0x0d, 0x26, 0x00, 0xf0, 0x1f, 0xf8, 0x80, 0x26, 0x37, 0x43,
+	0x07, 0x60, 0x3d, 0x26, 0x00, 0xf0, 0x19, 0xf8, 0x80, 0x26, 0xb7, 0x43,
+	0x07, 0x60, 0x0f, 0x4e, 0xb7, 0x43, 0x07, 0x60, 0x05, 0x26, 0x00, 0xf0,
+	0x10, 0xf8, 0x0d, 0x4e, 0xb7, 0x43, 0x07, 0x60, 0x04, 0x35, 0x04, 0x34,
+	0x9d, 0x42, 0x01, 0xd3, 0x15, 0x46, 0x08, 0x35, 0x55, 0x60, 0x01, 0x39,
+	0x00, 0x29, 0x00, 0xd0, 0xcd, 0xe7, 0x30, 0x46, 0x00, 0xbe, 0x01, 0x3e,
+	0x00, 0x2e, 0xfc, 0xd1, 0x70, 0x47, 0x00, 0x00, 0x40, 0x10, 0x00, 0x00,
+	0x00, 0x20, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x40, 0x20, 0x00, 0x00
+};
+
+/* see contrib/loaders/flash/k1986vk025 for src */
+static const uint8_t mdr_riscv_flash_write_code[] = {
+	0x83, 0x28, 0x05, 0x00, 0xB7, 0x37, 0x00, 0x00, 0x93, 0x8E, 0x07, 0x04,
+	0x93, 0x87, 0x07, 0x0C, 0x37, 0x13, 0x00, 0x00, 0x33, 0xE8, 0xF8, 0x00,
+	0xB7, 0x27, 0x00, 0x00, 0x13, 0x03, 0x03, 0x04, 0x93, 0x87, 0x07, 0x04,
+	0x13, 0x0E, 0x00, 0x00, 0x33, 0xE3, 0x68, 0x00, 0xB3, 0xEE, 0xD8, 0x01,
+	0xB3, 0xE7, 0xF8, 0x00, 0x93, 0x16, 0x2E, 0x00, 0x33, 0x0F, 0xD7, 0x00,
+	0x63, 0x92, 0xC5, 0x03, 0x73, 0x27, 0x00, 0xB0, 0x13, 0x07, 0x07, 0x05,
+	0xF3, 0x27, 0x00, 0xB0, 0xB3, 0x07, 0xF7, 0x40, 0xE3, 0xDC, 0x07, 0xFE,
+	0x13, 0x05, 0x00, 0x00, 0x13, 0x07, 0x0F, 0x00, 0x73, 0x00, 0x10, 0x00,
+	0x23, 0x22, 0xE5, 0x01, 0xB3, 0x06, 0xD6, 0x00, 0x83, 0xA6, 0x06, 0x00,
+	0x23, 0x24, 0xD5, 0x00, 0x23, 0x20, 0x65, 0x00, 0x73, 0x2F, 0x00, 0xB0,
+	0x13, 0x0F, 0x8F, 0x02, 0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40,
+	0xE3, 0xDC, 0x06, 0xFE, 0x23, 0x20, 0xD5, 0x01, 0x73, 0x2F, 0x00, 0xB0,
+	0x13, 0x0F, 0x0F, 0x05, 0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40,
+	0xE3, 0xDC, 0x06, 0xFE, 0x23, 0x20, 0x05, 0x01, 0x73, 0x2F, 0x00, 0xB0,
+	0x13, 0x0F, 0x0F, 0x14, 0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40,
+	0xE3, 0xDC, 0x06, 0xFE, 0x23, 0x20, 0xD5, 0x01, 0x73, 0x2F, 0x00, 0xB0,
+	0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40, 0xE3, 0xDC, 0x06, 0xFE,
+	0x23, 0x20, 0xF5, 0x00, 0x73, 0x2F, 0x00, 0xB0, 0x13, 0x0F, 0x8F, 0x02,
+	0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40, 0xE3, 0xDC, 0x06, 0xFE,
+	0x23, 0x20, 0x15, 0x01, 0x13, 0x0E, 0x1E, 0x00, 0x6F, 0xF0, 0x9F, 0xF4,
 };
 
 /* flash bank <name> mdr <base> <size> 0 0 <target#> <type> <page_count> <sec_count> */
@@ -80,9 +138,31 @@ FLASH_BANK_COMMAND_HANDLER(mdr_flash_bank_command)
 
 	bank->driver_priv = mdr_info;
 	mdr_info->probed = false;
+	mdr_info->riscv = !strcmp(target_type_name(bank->target), "riscv");
+	mdr_info->flash_base = FLASH_REG_BASE;
+
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[6], mdr_info->mem_type);
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[7], mdr_info->page_count);
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[8], mdr_info->sec_count);
+
+	if (!mdr_info->riscv) {
+		/* ARM-based MCUs */
+		mdr_info->per_clock = MD_PER_CLOCK;
+		mdr_info->per_clock_eeprom = MD_PER_CLOCK_EEPROM;
+		mdr_info->per_clock_rst_clk = MD_PER_CLOCK_RST_CLK;
+		mdr_info->ext_flags = 0;
+		mdr_info->flash_write_code = mdr32fx_flash_write_code;
+		mdr_info->flash_write_code_size = sizeof(mdr32fx_flash_write_code);
+	} else {
+		/* RISCV-based MCUs */
+		mdr_info->per_clock = MD_PER2_CLOCK;
+		mdr_info->per_clock_eeprom = MD_PER2_CLOCK_EEPROM;
+		mdr_info->per_clock_rst_clk = MD_PER2_CLOCK_RST_CLK;
+		mdr_info->ext_flags = FLASH_TMR;
+		mdr_info->flash_write_code = mdr_riscv_flash_write_code;
+		mdr_info->flash_write_code_size = sizeof(mdr_riscv_flash_write_code);
+	}
+
 	return ERROR_OK;
 }
 
@@ -138,7 +218,8 @@ static int mdr_erase(struct flash_bank *bank, unsigned int first,
 		return ERROR_TARGET_NOT_HALTED;
 	}
 
-	retval = target_read_u32(target, MD_PER_CLOCK, &cur_per_clock);
+	retval = target_read_u32(target, mdr_info->per_clock,
+							&cur_per_clock);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -147,7 +228,8 @@ static int mdr_erase(struct flash_bank *bank, unsigned int first,
 		return ERROR_FLASH_OPERATION_FAILED;
 	}
 
-	retval = target_write_u32(target, MD_PER_CLOCK, cur_per_clock | MD_PER_CLOCK_EEPROM);
+	retval = target_write_u32(target, mdr_info->per_clock,
+							cur_per_clock | mdr_info->per_clock_eeprom);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -160,7 +242,7 @@ static int mdr_erase(struct flash_bank *bank, unsigned int first,
 		goto reset_pg_and_lock;
 
 	/* Switch on register access */
-	flash_cmd = (flash_cmd & FLASH_DELAY_MASK) | FLASH_CON;
+	flash_cmd = (flash_cmd & FLASH_DELAY_MASK) | FLASH_CON | mdr_info->ext_flags;
 	if (mdr_info->mem_type)
 		flash_cmd |= FLASH_IFREN;
 	retval = target_write_u32(target, FLASH_CMD, flash_cmd);
@@ -197,6 +279,7 @@ static int mdr_erase(struct flash_bank *bank, unsigned int first,
 			if (retval != ERROR_OK)
 				goto reset_pg_and_lock;
 		}
+		bank->sectors[i].is_erased = 1;
 	}
 
 reset_pg_and_lock:
@@ -216,6 +299,7 @@ static int mdr_write_block(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	struct target *target = bank->target;
+	struct mdr_flash_bank *mdr_info = bank->driver_priv;
 	uint32_t buffer_size = 16384;
 	struct working_area *write_algorithm;
 	struct working_area *source;
@@ -224,30 +308,15 @@ static int mdr_write_block(struct flash_bank *bank, const uint8_t *buffer,
 	struct armv7m_algorithm armv7m_info;
 	int retval = ERROR_OK;
 
-	/* see contrib/loaders/flash/mdr32fx.S for src */
-	static const uint8_t mdr32fx_flash_write_code[] = {
-		0x07, 0x68, 0x16, 0x68, 0x00, 0x2e, 0x2e, 0xd0, 0x55, 0x68, 0xb5, 0x42,
-		0xf9, 0xd0, 0x2e, 0x68, 0x44, 0x60, 0x86, 0x60, 0x17, 0x4e, 0x37, 0x43,
-		0x07, 0x60, 0x05, 0x26, 0x00, 0xf0, 0x25, 0xf8, 0x15, 0x4e, 0x37, 0x43,
-		0x07, 0x60, 0x0d, 0x26, 0x00, 0xf0, 0x1f, 0xf8, 0x80, 0x26, 0x37, 0x43,
-		0x07, 0x60, 0x3d, 0x26, 0x00, 0xf0, 0x19, 0xf8, 0x80, 0x26, 0xb7, 0x43,
-		0x07, 0x60, 0x0f, 0x4e, 0xb7, 0x43, 0x07, 0x60, 0x05, 0x26, 0x00, 0xf0,
-		0x10, 0xf8, 0x0d, 0x4e, 0xb7, 0x43, 0x07, 0x60, 0x04, 0x35, 0x04, 0x34,
-		0x9d, 0x42, 0x01, 0xd3, 0x15, 0x46, 0x08, 0x35, 0x55, 0x60, 0x01, 0x39,
-		0x00, 0x29, 0x00, 0xd0, 0xcd, 0xe7, 0x30, 0x46, 0x00, 0xbe, 0x01, 0x3e,
-		0x00, 0x2e, 0xfc, 0xd1, 0x70, 0x47, 0x00, 0x00, 0x40, 0x10, 0x00, 0x00,
-		0x00, 0x20, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x40, 0x20, 0x00, 0x00
-	};
-
 	/* flash write code */
-	if (target_alloc_working_area(target, sizeof(mdr32fx_flash_write_code),
+	if (target_alloc_working_area(target, mdr_info->flash_write_code_size,
 			&write_algorithm) != ERROR_OK) {
 		LOG_WARNING("no working area available, can't do block memory writes");
 		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 	}
 
 	retval = target_write_buffer(target, write_algorithm->address,
-			sizeof(mdr32fx_flash_write_code), mdr32fx_flash_write_code);
+			mdr_info->flash_write_code_size, mdr_info->flash_write_code);
 	if (retval != ERROR_OK)
 		return retval;
 
@@ -265,31 +334,90 @@ static int mdr_write_block(struct flash_bank *bank, const uint8_t *buffer,
 		}
 	}
 
-	init_reg_param(&reg_params[0], "r0", 32, PARAM_IN_OUT);	/* flash base (in), status (out) */
-	init_reg_param(&reg_params[1], "r1", 32, PARAM_OUT);	/* count (32bit) */
-	init_reg_param(&reg_params[2], "r2", 32, PARAM_OUT);	/* buffer start */
-	init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);	/* buffer end */
-	init_reg_param(&reg_params[4], "r4", 32, PARAM_IN_OUT);	/* target address */
+	if (!mdr_info->riscv) {
+		init_reg_param(&reg_params[0], "r0", 32, PARAM_IN_OUT);	/* flash base (in), status (out) */
+		init_reg_param(&reg_params[1], "r1", 32, PARAM_OUT);	/* count (32bit) */
+		init_reg_param(&reg_params[2], "r2", 32, PARAM_OUT);	/* buffer start */
+		init_reg_param(&reg_params[3], "r3", 32, PARAM_OUT);	/* buffer end */
+		init_reg_param(&reg_params[4], "r4", 32, PARAM_IN_OUT);	/* target address */
 
-	buf_set_u32(reg_params[0].value, 0, 32, FLASH_REG_BASE);
-	buf_set_u32(reg_params[1].value, 0, 32, count);
-	buf_set_u32(reg_params[2].value, 0, 32, source->address);
-	buf_set_u32(reg_params[3].value, 0, 32, source->address + source->size);
-	buf_set_u32(reg_params[4].value, 0, 32, address);
+		armv7m_info.common_magic = ARMV7M_COMMON_MAGIC;
+		armv7m_info.core_mode = ARM_MODE_THREAD;
 
-	armv7m_info.common_magic = ARMV7M_COMMON_MAGIC;
-	armv7m_info.core_mode = ARM_MODE_THREAD;
+		buf_set_u32(reg_params[0].value, 0, 32, mdr_info->flash_base);
+		buf_set_u32(reg_params[1].value, 0, 32, count);
+		buf_set_u32(reg_params[2].value, 0, 32, source->address);
+		buf_set_u32(reg_params[3].value, 0, 32, source->address + source->size);
+		buf_set_u32(reg_params[4].value, 0, 32, address);
 
-	retval = target_run_flash_async_algorithm(target, buffer, count, 4,
-			0, NULL,
-			5, reg_params,
-			source->address, source->size,
-			write_algorithm->address, 0,
-			&armv7m_info);
+		retval = target_run_flash_async_algorithm(target, buffer, count, 4,
+				0, NULL,
+				5, reg_params,
+				source->address, source->size,
+				write_algorithm->address, 0,
+				!mdr_info->riscv ? &armv7m_info : NULL);
 
-	if (retval == ERROR_FLASH_OPERATION_FAILED)
-		LOG_ERROR("flash write failed at address 0x%"PRIx32,
-				buf_get_u32(reg_params[4].value, 0, 32));
+		if (retval == ERROR_FLASH_OPERATION_FAILED)
+			LOG_ERROR("flash write failed at address 0x%"PRIx32,
+					buf_get_u32(reg_params[4].value, 0, 32));
+	} else {
+		init_reg_param(&reg_params[0], "a0", 32, PARAM_IN_OUT);	/* flash base (in), status (out) */
+		init_reg_param(&reg_params[1], "a1", 32, PARAM_OUT);	/* word_count (32bit) */
+		init_reg_param(&reg_params[2], "a2", 32, PARAM_OUT);	/* buffer start */
+		init_reg_param(&reg_params[3], "a3", 32, PARAM_OUT);	/* buffer end */
+		init_reg_param(&reg_params[4], "a4", 32, PARAM_IN_OUT);	/* target address */
+
+		while (count > 0) {
+			size_t words_to_write = buffer_size/4 < count ? buffer_size/4 : count;
+
+			retval = target_write_buffer(target,
+					source->address,
+					words_to_write * 4,
+					buffer);
+			if (retval != ERROR_OK) {
+				LOG_ERROR("flash data buffer write failed at address 0x%"PRIx32,
+						(uint32_t)source->address);
+				break;
+			}
+
+			buf_set_u32(reg_params[0].value, 0, 32, mdr_info->flash_base);
+			buf_set_u32(reg_params[1].value, 0, 32, words_to_write);
+			buf_set_u32(reg_params[2].value, 0, 32, source->address);
+			buf_set_u32(reg_params[3].value, 0, 32, source->address + source->size);
+			buf_set_u32(reg_params[4].value, 0, 32, address);
+
+			LOG_DEBUG("MDR32RV: flash_base = 0x%"PRIx32", "
+					  "word_count = 0x%"PRIx32", "
+					  "start = 0x%"PRIx32", "
+					  "end = 0x%"PRIx32", "
+					  "address = 0x%"PRIx32,
+					  buf_get_u32(reg_params[0].value, 0, 32),
+					  buf_get_u32(reg_params[1].value, 0, 32),
+					  buf_get_u32(reg_params[2].value, 0, 32),
+					  buf_get_u32(reg_params[3].value, 0, 32),
+					  buf_get_u32(reg_params[4].value, 0, 32));
+
+			retval = target_run_algorithm(target,
+				0, NULL, 5, reg_params,
+				write_algorithm->address, 0,
+				1000, NULL);
+
+			LOG_DEBUG("MDR32RV: status = 0x%"PRIx32", "
+					  "address = 0x%"PRIx32,
+					  buf_get_u32(reg_params[0].value, 0, 32),
+					  buf_get_u32(reg_params[4].value, 0, 32));
+
+			if (retval != ERROR_OK) {
+				LOG_ERROR("flash write failed at address 0x%"PRIx32,
+						  buf_get_u32(reg_params[4].value, 0, 32));
+				break;
+			}
+
+			address += words_to_write * 4;
+			count   -= words_to_write;
+			buffer  += words_to_write * 4;
+		}
+	}
 
 	target_free_working_area(target, source);
 	target_free_working_area(target, write_algorithm);
@@ -340,18 +468,20 @@ static int mdr_write(struct flash_bank *bank, const uint8_t *buffer,
 	uint32_t flash_cmd, cur_per_clock;
 	int retval, retval2;
 
-	retval = target_read_u32(target, MD_PER_CLOCK, &cur_per_clock);
+	retval = target_read_u32(target, mdr_info->per_clock,
+							 &cur_per_clock);
 	if (retval != ERROR_OK)
 		goto free_buffer;
 
-	if (!(cur_per_clock & MD_PER_CLOCK_RST_CLK)) {
+	if (!(cur_per_clock & mdr_info->per_clock_rst_clk)) {
 		/* Something's very wrong if the RST_CLK module is not clocked */
 		LOG_ERROR("Target needs reset before flash operations");
 		retval = ERROR_FLASH_OPERATION_FAILED;
 		goto free_buffer;
 	}
 
-	retval = target_write_u32(target, MD_PER_CLOCK, cur_per_clock | MD_PER_CLOCK_EEPROM);
+	retval = target_write_u32(target, mdr_info->per_clock,
+							  cur_per_clock | mdr_info->per_clock_eeprom);
 	if (retval != ERROR_OK)
 		goto free_buffer;
 
@@ -364,7 +494,7 @@ static int mdr_write(struct flash_bank *bank, const uint8_t *buffer,
 		goto reset_pg_and_lock;
 
 	/* Switch on register access */
-	flash_cmd = (flash_cmd & FLASH_DELAY_MASK) | FLASH_CON;
+	flash_cmd = (flash_cmd & FLASH_DELAY_MASK) | FLASH_CON | mdr_info->ext_flags;
 	if (mdr_info->mem_type)
 		flash_cmd |= FLASH_IFREN;
 	retval = target_write_u32(target, FLASH_CMD, flash_cmd);
@@ -496,18 +626,20 @@ static int mdr_read(struct flash_bank *bank, uint8_t *buffer,
 
 	uint32_t flash_cmd, cur_per_clock;
 
-	retval = target_read_u32(target, MD_PER_CLOCK, &cur_per_clock);
+	retval = target_read_u32(target, mdr_info->per_clock,
+							 &cur_per_clock);
 	if (retval != ERROR_OK)
 		goto err;
 
-	if (!(cur_per_clock & MD_PER_CLOCK_RST_CLK)) {
+	if (!(cur_per_clock & mdr_info->per_clock_rst_clk)) {
 		/* Something's very wrong if the RST_CLK module is not clocked */
 		LOG_ERROR("Target needs reset before flash operations");
 		retval = ERROR_FLASH_OPERATION_FAILED;
 		goto err;
 	}
 
-	retval = target_write_u32(target, MD_PER_CLOCK, cur_per_clock | MD_PER_CLOCK_EEPROM);
+	retval = target_write_u32(target, mdr_info->per_clock,
+							  cur_per_clock | mdr_info->per_clock_eeprom);
 	if (retval != ERROR_OK)
 		goto err;
 
@@ -520,7 +652,9 @@ static int mdr_read(struct flash_bank *bank, uint8_t *buffer,
 		goto err_lock;
 
 	/* Switch on register access */
-	flash_cmd = (flash_cmd & FLASH_DELAY_MASK) | FLASH_CON | FLASH_IFREN;
+	flash_cmd = (flash_cmd & FLASH_DELAY_MASK) | FLASH_CON | mdr_info->ext_flags;
+	if (mdr_info->mem_type)
+		flash_cmd |= FLASH_IFREN;
 	retval = target_write_u32(target, FLASH_CMD, flash_cmd);
 	if (retval != ERROR_OK)
 		goto reset_pg_and_lock;
@@ -599,7 +733,8 @@ static int mdr_auto_probe(struct flash_bank *bank)
 static int get_mdr_info(struct flash_bank *bank, struct command_invocation *cmd)
 {
 	struct mdr_flash_bank *mdr_info = bank->driver_priv;
-	command_print_sameline(cmd, "MDR32Fx - %s",
+	command_print_sameline(cmd, "%s - %s",
+			!mdr_info->riscv ? "MDR32Fx" : "MDR32RV",
 			mdr_info->mem_type ? "info memory" : "main memory");
 
 	return ERROR_OK;
