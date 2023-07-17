@@ -18,9 +18,11 @@
 /* pld drivers
  */
 extern struct pld_driver virtex2_pld;
+extern struct pld_driver pangol2_pld;
 
 static struct pld_driver *pld_drivers[] = {
 	&virtex2_pld,
+	&pangol2_pld,
 	NULL,
 };
 
