@@ -19,6 +19,7 @@
 #endif
 
 #include "imp.h"
+#include <helper/bits.h>
 #include <helper/binarybuffer.h>
 #include <target/algorithm.h>
 #include <target/armv7m.h>
@@ -28,13 +29,13 @@
 
 /* ARM-based MCU definitions */
 #define MD_PER_CLOCK		(MD_RST_CLK + 0x1C)
-#define MD_PER_CLOCK_EEPROM	(1 << 3)
-#define MD_PER_CLOCK_RST_CLK	(1 << 4)
+#define MD_PER_CLOCK_EEPROM	BIT(3)
+#define MD_PER_CLOCK_RST_CLK	BIT(4)
 
 /* RISCV-based MCU definitions (f.e. K1986VK025) */
 #define MD_PER2_CLOCK		(MD_RST_CLK + 0x1C)
-#define MD_PER2_CLOCK_EEPROM	(1 << 3)
-#define MD_PER2_CLOCK_RST_CLK	(1 << 4)
+#define MD_PER2_CLOCK_EEPROM	BIT(3)
+#define MD_PER2_CLOCK_RST_CLK	BIT(4)
 
 #define FLASH_REG_BASE	0x40018000
 #define FLASH_CMD	(mdr_info->flash_base + 0x00)
@@ -43,18 +44,18 @@
 #define FLASH_DO	(mdr_info->flash_base + 0x0C)
 #define FLASH_KEY	(mdr_info->flash_base + 0x10)
 
-#define FLASH_TMR	 (1 << 14)
-#define FLASH_NVSTR	 (1 << 13)
-#define FLASH_PROG	 (1 << 12)
-#define FLASH_MAS1	 (1 << 11)
-#define FLASH_ERASE	 (1 << 10)
-#define FLASH_IFREN	 (1 << 9)
-#define FLASH_SE	 (1 << 8)
-#define FLASH_YE	 (1 << 7)
-#define FLASH_XE	 (1 << 6)
-#define FLASH_RD	 (1 << 2)
-#define FLASH_WR	 (1 << 1)
-#define FLASH_CON	 (1 << 0)
+#define FLASH_TMR	 BIT(14)
+#define FLASH_NVSTR	 BIT(13)
+#define FLASH_PROG	 BIT(12)
+#define FLASH_MAS1	 BIT(11)
+#define FLASH_ERASE	 BIT(10)
+#define FLASH_IFREN	 BIT(9)
+#define FLASH_SE	 BIT(8)
+#define FLASH_YE	 BIT(7)
+#define FLASH_XE	 BIT(6)
+#define FLASH_RD	 BIT(2)
+#define FLASH_WR	 BIT(1)
+#define FLASH_CON	 BIT(0)
 #define FLASH_DELAY_MASK (7 << 3)
 
 #define KEY		0x8AAA5551
