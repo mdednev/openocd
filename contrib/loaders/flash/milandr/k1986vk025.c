@@ -39,7 +39,7 @@ typedef struct {
 #define EEPROM_CMD_DELAY_0_CYCLE        (0x0U << EEPROM_CMD_DELAY_POS)          /*!< 0x00000000 */
 #define EEPROM_CMD_DELAY_1_CYCLE        (0x1U << EEPROM_CMD_DELAY_POS)          /*!< 0x00000008 */
 /* upper part of the address [17:9] feeding enable (0 - disabled, 1 - enabled) */
-#define EEPROM_CMD_XE__POS               (6U)
+#define EEPROM_CMD_XE_POS               (6U)
 #define EEPROM_CMD_XE_MSK               (0x1U << EEPROM_CMD_XE_POS)             /*!< 0x00000040 */
 #define EEPROM_CMD_XE                   EEPROM_CMD_XE_MSK
 /* lower part of the address [8:2] feeding enable (0 - disabled, 1 - enabled) */
