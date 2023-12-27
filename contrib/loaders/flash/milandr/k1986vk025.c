@@ -16,7 +16,7 @@
 #endif
 
 typedef struct {
-	__IO uint32_t CMD;          /*!< control register - 0x00 */
+	__IO uint32_t CMD;          /*!< command register - 0x00 */
 	__IO uint32_t ADR;          /*!< address register - 0x04 */
 	__IO uint32_t DI;           /*!< input data register - 0x08 */
 	__IO uint32_t DO;           /*!< output data register - 0x0C */
@@ -118,9 +118,8 @@ void write_flash(uint32_t  flash_base,
 		register unsigned int page_start = target_address & ~page_mask;
 		register unsigned int page_write_size = (page_start + page_size - target_address) / 4;
 
-		if (word_count < page_write_size) {
+		if (word_count < page_write_size)
 			page_write_size = word_count;
-		}
 
 		/* Latch MSB part of page address to be written in following cycle */
 		MDR_EEPROM->ADR = target_address;

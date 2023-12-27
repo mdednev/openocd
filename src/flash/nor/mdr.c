@@ -12,6 +12,9 @@
  *                                                                         *
  *   Copyright (C) 2013 by Paul Fertser                                    *
  *   fercerpav@gmail.com                                                   *
+ *                                                                         *
+ *   Copyright (C) 2023 by Max A. Dednev                                   *
+ *   m.dednev@yandex.ru                                                    *
  ***************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -75,17 +78,29 @@
 #define MD_FLASH_CON		BIT(0)
 #define MD_FLASH_DELAY_MASK	(7 << 3)
 
+/* MDR1206FI CHIP_ID = 215 specific definitions */
+#define MD_FLASH_TMEN_215	BIT(14)
+#define MD_FLASH_PROG2_215	BIT(13)
+#define MD_FLASH_PROG_215	BIT(12)
+#define MD_FLASH_CHIP_215	BIT(11)
+#define MD_FLASH_ERASE_215	BIT(10)
+#define MD_FLASH_NVR_215	BIT(9)
+#define MD_FLASH_RE_215		BIT(8)
+#define MD_FLASH_WE_215		BIT(7)
+#define MD_FLASH_CE_215		BIT(6)
+#define MD_FLASH_CON_215	BIT(0)
+
 #define KEY			(0x8AAA5551)
 
 /* Operation timing in microseconds (us) */
-#define MD_FLASH_Tnvs		(mdr_info->t_nvs)
-#define MD_FLASH_Terase		(mdr_info->t_erase)
-#define MD_FLASH_Tme		(mdr_info->t_me)
-#define MD_FLASH_Tnvh		(mdr_info->t_nvh)
-#define MD_FLASH_Tnvh1		(mdr_info->t_nvh1)
-#define MD_FLASH_Tprog		(mdr_info->t_prog)
-#define MD_FLASH_Tpgs		(mdr_info->t_pgs)
-#define MD_FLASH_Trcv		(mdr_info->t_rcv)
+#define MD_FLASH_T_NVS		(mdr_info->t_nvs)
+#define MD_FLASH_T_ERASE	(mdr_info->t_erase)
+#define MD_FLASH_T_ME		(mdr_info->t_me)
+#define MD_FLASH_T_NVH		(mdr_info->t_nvh)
+#define MD_FLASH_T_NVH1		(mdr_info->t_nvh1)
+#define MD_FLASH_T_PROG		(mdr_info->t_prog)
+#define MD_FLASH_T_PGS		(mdr_info->t_pgs)
+#define MD_FLASH_T_RCV		(mdr_info->t_rcv)
 
 struct mdr_flash_bank {
 	bool          probed;
@@ -99,6 +114,7 @@ struct mdr_flash_bank {
 	unsigned int  mem_type;
 	unsigned int  bank_count;
 	unsigned int  sect_count;
+	unsigned int  page_size;
 
 	uint32_t      ext_flags;
 	const uint8_t *flash_write_code;
@@ -154,27 +170,32 @@ static const uint8_t k1986vk025_flash_write_code[] = {
 
 /* see contrib/loaders/flash/milandr/mdr1206fi_215.c for src */
 static const uint8_t mdr1206fi_215_flash_write_code[] = {
-	/* TODO */
-	0x83, 0x28, 0x05, 0x00, 0xB7, 0x37, 0x00, 0x00, 0x93, 0x8E, 0x07, 0x04,
-	0x93, 0x87, 0x07, 0x0C, 0x37, 0x13, 0x00, 0x00, 0x33, 0xE8, 0xF8, 0x00,
-	0xB7, 0x27, 0x00, 0x00, 0x13, 0x03, 0x03, 0x04, 0x93, 0x87, 0x07, 0x04,
-	0x13, 0x0E, 0x00, 0x00, 0x33, 0xE3, 0x68, 0x00, 0xB3, 0xEE, 0xD8, 0x01,
-	0xB3, 0xE7, 0xF8, 0x00, 0x93, 0x16, 0x2E, 0x00, 0x33, 0x0F, 0xD7, 0x00,
-	0x63, 0x92, 0xC5, 0x03, 0x73, 0x27, 0x00, 0xB0, 0x13, 0x07, 0x07, 0x05,
-	0xF3, 0x27, 0x00, 0xB0, 0xB3, 0x07, 0xF7, 0x40, 0xE3, 0xDC, 0x07, 0xFE,
-	0x13, 0x05, 0x00, 0x00, 0x13, 0x07, 0x0F, 0x00, 0x73, 0x00, 0x10, 0x00,
-	0x23, 0x22, 0xE5, 0x01, 0xB3, 0x06, 0xD6, 0x00, 0x83, 0xA6, 0x06, 0x00,
-	0x23, 0x24, 0xD5, 0x00, 0x23, 0x20, 0x65, 0x00, 0x73, 0x2F, 0x00, 0xB0,
-	0x13, 0x0F, 0x8F, 0x02, 0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40,
-	0xE3, 0xDC, 0x06, 0xFE, 0x23, 0x20, 0xD5, 0x01, 0x73, 0x2F, 0x00, 0xB0,
-	0x13, 0x0F, 0x0F, 0x05, 0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40,
-	0xE3, 0xDC, 0x06, 0xFE, 0x23, 0x20, 0x05, 0x01, 0x73, 0x2F, 0x00, 0xB0,
-	0x13, 0x0F, 0x0F, 0x14, 0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40,
-	0xE3, 0xDC, 0x06, 0xFE, 0x23, 0x20, 0xD5, 0x01, 0x73, 0x2F, 0x00, 0xB0,
-	0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40, 0xE3, 0xDC, 0x06, 0xFE,
-	0x23, 0x20, 0xF5, 0x00, 0x73, 0x2F, 0x00, 0xB0, 0x13, 0x0F, 0x8F, 0x02,
-	0xF3, 0x26, 0x00, 0xB0, 0xB3, 0x06, 0xDF, 0x40, 0xE3, 0xDC, 0x06, 0xFE,
-	0x23, 0x20, 0x15, 0x01, 0x13, 0x0E, 0x1E, 0x00, 0x6F, 0xF0, 0x9F, 0xF4,
+	0x03, 0x2e, 0x05, 0x00, 0x83, 0x27, 0x05, 0x00, 0x37, 0x2f, 0x00, 0x00, 0x93, 0xf7, 0x07, 0x20,
+	0x63, 0x84, 0x07, 0x00, 0x37, 0x0f, 0x04, 0x00, 0xb7, 0x16, 0x00, 0x00, 0x37, 0x38, 0x00, 0x00,
+	0x93, 0x8e, 0x06, 0x04, 0x13, 0x08, 0x08, 0x0c, 0x93, 0x86, 0x06, 0x0c, 0xb3, 0x6e, 0xde, 0x01,
+	0xb3, 0x66, 0xde, 0x00, 0x93, 0x0f, 0x10, 0x00, 0x33, 0x68, 0x0e, 0x01, 0x93, 0x02, 0x40, 0x00,
+	0x63, 0x98, 0x05, 0x00, 0x13, 0x05, 0x00, 0x00, 0x13, 0x07, 0x07, 0x00, 0x73, 0x00, 0x10, 0x00,
+	0x93, 0x77, 0x07, 0xf8, 0xb3, 0x87, 0xe7, 0x40, 0x93, 0x87, 0x07, 0x08, 0x93, 0xd7, 0x27, 0x00,
+	0x93, 0x83, 0x05, 0x00, 0x63, 0xf4, 0xb7, 0x00, 0x93, 0x83, 0x07, 0x00, 0x93, 0x57, 0x17, 0x00,
+	0x93, 0x78, 0x47, 0x00, 0x93, 0xf7, 0xc7, 0xff, 0x63, 0x84, 0x08, 0x00, 0xb3, 0xe7, 0xe7, 0x01,
+	0x23, 0x22, 0xf5, 0x00, 0x23, 0x20, 0xd5, 0x01, 0xf3, 0x28, 0x00, 0xb0, 0x93, 0x88, 0x08, 0x0a,
+	0xf3, 0x27, 0x00, 0xb0, 0xb3, 0x87, 0xf8, 0x40, 0xe3, 0xdc, 0x07, 0xfe, 0x23, 0x20, 0xd5, 0x00,
+	0xf3, 0x28, 0x00, 0xb0, 0x93, 0x88, 0x08, 0x23, 0xf3, 0x27, 0x00, 0xb0, 0xb3, 0x87, 0xf8, 0x40,
+	0xe3, 0xdc, 0x07, 0xfe, 0x93, 0x94, 0x23, 0x00, 0x93, 0x08, 0x00, 0x00, 0xb3, 0x07, 0x17, 0x01,
+	0x33, 0x04, 0x16, 0x01, 0x63, 0x92, 0x98, 0x04, 0x13, 0x87, 0x07, 0x00, 0x13, 0x06, 0x04, 0x00,
+	0xb3, 0x85, 0x75, 0x40, 0x23, 0x20, 0xd5, 0x01, 0xf3, 0x28, 0x00, 0xb0, 0x93, 0x88, 0x08, 0x19,
+	0xf3, 0x27, 0x00, 0xb0, 0xb3, 0x87, 0xf8, 0x40, 0xe3, 0xdc, 0x07, 0xfe, 0x23, 0x20, 0xc5, 0x01,
+	0xf3, 0x28, 0x00, 0xb0, 0x93, 0x88, 0x88, 0x00, 0xf3, 0x27, 0x00, 0xb0, 0xb3, 0x87, 0xf8, 0x40,
+	0xe3, 0xdc, 0x07, 0xfe, 0x6f, 0xf0, 0xdf, 0xf3, 0x13, 0xd3, 0x17, 0x00, 0x93, 0xf7, 0x47, 0x00,
+	0x13, 0x73, 0xc3, 0xff, 0x63, 0x84, 0x07, 0x00, 0x33, 0x63, 0xe3, 0x01, 0x23, 0x22, 0x65, 0x00,
+	0x83, 0x27, 0x04, 0x00, 0x23, 0x24, 0xf5, 0x00, 0x93, 0x07, 0x00, 0x00, 0x33, 0x93, 0xff, 0x00,
+	0x23, 0x2a, 0x65, 0x00, 0x73, 0x24, 0x00, 0xb0, 0x13, 0x04, 0x84, 0x00, 0x73, 0x23, 0x00, 0xb0,
+	0x33, 0x03, 0x64, 0x40, 0xe3, 0x5c, 0x03, 0xfe, 0x23, 0x20, 0x05, 0x01, 0x73, 0x24, 0x00, 0xb0,
+	0x13, 0x04, 0x84, 0x03, 0x73, 0x23, 0x00, 0xb0, 0x33, 0x03, 0x64, 0x40, 0xe3, 0x5c, 0x03, 0xfe,
+	0x23, 0x20, 0xd5, 0x00, 0x73, 0x24, 0x00, 0xb0, 0x13, 0x04, 0x84, 0x00, 0x73, 0x23, 0x00, 0xb0,
+	0x33, 0x03, 0x64, 0x40, 0xe3, 0x5c, 0x03, 0xfe, 0x93, 0x87, 0x17, 0x00, 0xe3, 0x98, 0x57, 0xfa,
+	0x73, 0x23, 0x00, 0xb0, 0x13, 0x03, 0x83, 0x00, 0xf3, 0x27, 0x00, 0xb0, 0xb3, 0x07, 0xf3, 0x40,
+	0xe3, 0xdc, 0x07, 0xfe, 0x93, 0x88, 0x48, 0x00, 0x6f, 0xf0, 0x5f, 0xf2,
 };
 
 /* see contrib/loaders/flash/milandr/mdr1206fi_217.c for src */
@@ -219,6 +240,8 @@ FLASH_BANK_COMMAND_HANDLER(mdr_flash_bank_command)
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[6], mdr_info->mem_type);
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[7], mdr_info->bank_count);
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[8], mdr_info->sect_count);
+
+	mdr_info->page_size = (1 << 12); /* 4096B page size by default */
 
 	if (!mdr_info->riscv) {
 		/* ARM-based MCUs */
@@ -288,37 +311,74 @@ static int mdr_mass_erase(struct flash_bank *bank)
 		return retval;
 
 	for (unsigned int i = 0; i < mdr_info->bank_count; i++) {
-		retval = target_write_u32(target, MD_FLASH_ADR, i * bank_size);
-		if (retval != ERROR_OK)
-			return retval;
+		if (!mdr_info->riscv || mdr_info->chip_id != 215) {
+			retval = target_write_u32(target, MD_FLASH_ADR, i * bank_size);
+			if (retval != ERROR_OK)
+				return retval;
 
-		flash_cmd |= MD_FLASH_XE | MD_FLASH_MAS1 | MD_FLASH_ERASE;
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			return retval;
+			flash_cmd |= MD_FLASH_XE | MD_FLASH_MAS1 | MD_FLASH_ERASE;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
 
-		jtag_sleep(MD_FLASH_Tnvs);
+			jtag_sleep(MD_FLASH_T_NVS);
 
-		flash_cmd |= MD_FLASH_NVSTR;
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			return retval;
+			flash_cmd |= MD_FLASH_NVSTR;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
 
-		jtag_sleep(MD_FLASH_Tme);
+			jtag_sleep(MD_FLASH_T_ME);
 
-		flash_cmd &= ~MD_FLASH_ERASE;
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			return retval;
+			flash_cmd &= ~MD_FLASH_ERASE;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
 
-		jtag_sleep(MD_FLASH_Tnvh1);
+			jtag_sleep(MD_FLASH_T_NVH1);
 
-		flash_cmd &= ~(MD_FLASH_XE | MD_FLASH_MAS1 | MD_FLASH_NVSTR);
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			return retval;
+			flash_cmd &= ~(MD_FLASH_XE | MD_FLASH_MAS1 | MD_FLASH_NVSTR);
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
 
-		jtag_sleep(MD_FLASH_Trcv);
+			jtag_sleep(MD_FLASH_T_RCV);
+		} else {
+			uint32_t address;
+			address = i * (!mdr_info->mem_type ? BIT(18) : BIT(13));
+
+			retval = target_write_u32(target, MD_FLASH_ADR, address);
+			if (retval != ERROR_OK)
+				return retval;
+
+			flash_cmd |= MD_FLASH_CE_215 | MD_FLASH_CHIP_215 | MD_FLASH_ERASE_215;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
+
+			jtag_sleep(MD_FLASH_T_NVS);
+
+			flash_cmd |= MD_FLASH_WE_215;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
+
+			jtag_sleep(MD_FLASH_T_ME);
+
+			flash_cmd &= ~MD_FLASH_WE_215;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
+
+			jtag_sleep(MD_FLASH_T_NVH1);
+
+			flash_cmd &= ~(MD_FLASH_CE_215 | MD_FLASH_CHIP_215 | MD_FLASH_ERASE_215);
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				return retval;
+
+			jtag_sleep(MD_FLASH_T_RCV);
+		}
 	}
 
 	for (unsigned int sect = 0; sect < mdr_info->sect_count; sect++) {
@@ -369,40 +429,81 @@ static int mdr_erase(struct flash_bank *bank, unsigned int first,
 	}
 
 	unsigned int sect_size = bank->size / mdr_info->sect_count;
+
 	for (unsigned int sect = first; sect <= last; sect++) {
-		retval = target_write_u32(target, MD_FLASH_ADR, sect * sect_size);
-		if (retval != ERROR_OK)
-			goto reset_pg_and_lock;
+		if (!mdr_info->riscv || mdr_info->chip_id != 215) {
+			retval = target_write_u32(target, MD_FLASH_ADR, sect * sect_size);
+			if (retval != ERROR_OK)
+				goto reset_pg_and_lock;
 
-		flash_cmd |= MD_FLASH_XE | MD_FLASH_ERASE;
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			goto reset_pg_and_lock;
+			flash_cmd |= MD_FLASH_XE | MD_FLASH_ERASE;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				goto reset_pg_and_lock;
 
-		jtag_sleep(MD_FLASH_Tnvs);
+			jtag_sleep(MD_FLASH_T_NVS);
 
-		flash_cmd |= MD_FLASH_NVSTR;
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			goto reset_pg_and_lock;
+			flash_cmd |= MD_FLASH_NVSTR;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				goto reset_pg_and_lock;
 
-		jtag_sleep(MD_FLASH_Terase);
+			jtag_sleep(MD_FLASH_T_ERASE);
 
-		flash_cmd &= ~MD_FLASH_ERASE;
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			goto reset_pg_and_lock;
+			flash_cmd &= ~MD_FLASH_ERASE;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				goto reset_pg_and_lock;
 
-		jtag_sleep(MD_FLASH_Tnvh);
+			jtag_sleep(MD_FLASH_T_NVH);
 
-		flash_cmd &= ~(MD_FLASH_XE | MD_FLASH_NVSTR);
-		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-		if (retval != ERROR_OK)
-			goto reset_pg_and_lock;
+			flash_cmd &= ~(MD_FLASH_XE | MD_FLASH_NVSTR);
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				goto reset_pg_and_lock;
 
-		jtag_sleep(MD_FLASH_Trcv);
+			jtag_sleep(MD_FLASH_T_RCV);
 
-		bank->sectors[sect].is_erased = 1;
+			bank->sectors[sect].is_erased = 1;
+		} else {
+			for (unsigned int i = 0; i < 2; i++) {
+				uint32_t address = (sect * sect_size) / 2;
+				address |= i * (!mdr_info->mem_type ? BIT(18) : BIT(13));
+
+				retval = target_write_u32(target, MD_FLASH_ADR, address);
+				if (retval != ERROR_OK)
+					goto reset_pg_and_lock;
+
+				flash_cmd |= MD_FLASH_CE_215 | MD_FLASH_ERASE_215;
+				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+				if (retval != ERROR_OK)
+					goto reset_pg_and_lock;
+
+				jtag_sleep(MD_FLASH_T_NVS);
+
+				flash_cmd |= MD_FLASH_WE_215;
+				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+				if (retval != ERROR_OK)
+					goto reset_pg_and_lock;
+
+				jtag_sleep(MD_FLASH_T_ERASE);
+
+				flash_cmd &= ~MD_FLASH_WE_215;
+				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+				if (retval != ERROR_OK)
+					goto reset_pg_and_lock;
+
+				jtag_sleep(MD_FLASH_T_RCV);
+
+				flash_cmd &= ~(MD_FLASH_CE_215 | MD_FLASH_ERASE_215);
+				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+				if (retval != ERROR_OK)
+					goto reset_pg_and_lock;
+
+				jtag_sleep(MD_FLASH_T_RCV);
+			}
+			bank->sectors[sect].is_erased = 1;
+		}
 	}
 
 reset_pg_and_lock:
@@ -418,8 +519,8 @@ reset_pg_and_lock:
 	return retval;
 }
 
-static int mdr_write_block(struct flash_bank *bank, const uint8_t *buffer,
-		uint32_t offset, uint32_t count)
+static int mdr_write_block_hw(struct flash_bank *bank, const uint8_t *buffer,
+			uint32_t offset, uint32_t count)
 {
 	struct target *target = bank->target;
 	struct mdr_flash_bank *mdr_info = bank->driver_priv;
@@ -554,12 +655,221 @@ static int mdr_write_block(struct flash_bank *bank, const uint8_t *buffer,
 	return retval;
 }
 
+static int mdr_write_block_sw(struct flash_bank *bank, const uint8_t *buffer,
+			uint32_t offset, uint32_t size)
+{
+	struct target *target = bank->target;
+	struct mdr_flash_bank *mdr_info = bank->driver_priv;
+	unsigned int sect_size = bank->size / bank->num_sectors;
+	uint32_t flash_cmd;
+	int retval;
+
+	retval = target_read_u32(target, MD_FLASH_CMD, &flash_cmd);
+	if (retval != ERROR_OK)
+		goto finish;
+
+	while (size > 0) {
+		unsigned int page_size = mdr_info->page_size;
+		unsigned int page_mask = page_size - 1;
+		unsigned int page_start = offset & ~page_mask;
+		unsigned int page_write_size = page_start + page_size - offset;
+
+		if (size < page_write_size)
+			page_write_size = size;
+
+		/* Latch MSB part of page address to be written in following cycle */
+		retval = target_write_u32(target, MD_FLASH_ADR, offset);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		flash_cmd |= MD_FLASH_XE | MD_FLASH_PROG;
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_NVS);
+
+		flash_cmd |= MD_FLASH_NVSTR;
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_PGS);
+
+		for (unsigned int i = 0; i < page_write_size; i += 4) {
+			/* Latch word address (LSB part) to be written */
+			retval = target_write_u32(target, MD_FLASH_ADR, offset + i);
+			if (retval != ERROR_OK)
+				goto finish;
+
+			uint32_t value = buf_get_u32(buffer + i, 0, 32);
+			retval = target_write_u32(target, MD_FLASH_DI, value);
+			if (retval != ERROR_OK)
+				goto finish;
+
+			flash_cmd |= MD_FLASH_YE;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				goto finish;
+
+			jtag_sleep(MD_FLASH_T_PROG);
+
+			flash_cmd &= ~MD_FLASH_YE;
+			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+			if (retval != ERROR_OK)
+				goto finish;
+
+			/* Wait for Tadh = 20 ns */
+			jtag_sleep(1);
+
+			bank->sectors[(offset + i) / sect_size].is_erased = 0;
+		}
+
+		buffer += page_write_size;
+		offset += page_write_size;
+		size   -= page_write_size;
+
+		flash_cmd &= ~MD_FLASH_PROG;
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_NVH);
+
+		flash_cmd &= ~(MD_FLASH_XE | MD_FLASH_NVSTR);
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_RCV);
+	}
+finish:
+	return retval;
+}
+
+static uint32_t mdr_conv_addr_215(struct flash_bank *bank, uint32_t offset)
+{
+	struct mdr_flash_bank *mdr_info = bank->driver_priv;
+	uint32_t address = (offset >> 1) & ~0x3;
+
+	if (offset & BIT(2))
+		address |= !mdr_info->mem_type ? BIT(18) : BIT(13);
+
+	return address;
+}
+
+static int mdr_write_block_sw_215(struct flash_bank *bank, const uint8_t *buffer,
+				uint32_t offset, uint32_t size)
+{
+	struct target *target = bank->target;
+	struct mdr_flash_bank *mdr_info = bank->driver_priv;
+	unsigned int sect_size = bank->size / bank->num_sectors;
+	uint32_t flash_cmd;
+	int retval;
+
+	retval = target_read_u32(target, MD_FLASH_CMD, &flash_cmd);
+	if (retval != ERROR_OK)
+		goto finish;
+
+	while (size > 0) {
+		unsigned int page_size = mdr_info->page_size;
+		unsigned int page_mask = page_size - 1;
+		unsigned int page_start = offset & ~page_mask;
+		unsigned int page_write_size = page_start + page_size - offset;
+
+		if (size < page_write_size)
+			page_write_size = size;
+
+		/* Latch MSB part of page address to be written in following cycle */
+		retval = target_write_u32(target, MD_FLASH_ADR,
+					mdr_conv_addr_215(bank, offset));
+		if (retval != ERROR_OK)
+			goto finish;
+
+		flash_cmd |= MD_FLASH_CE_215 | MD_FLASH_PROG_215;
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_NVS);
+
+		flash_cmd |= MD_FLASH_WE_215;
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_PGS);
+
+		for (unsigned int i = 0; i < page_write_size; i += 4) {
+			/* Latch word address (LSB part) to be written */
+			retval = target_write_u32(target, MD_FLASH_ADR,
+						mdr_conv_addr_215(bank, offset + i));
+			if (retval != ERROR_OK)
+				goto finish;
+
+			uint32_t value = buf_get_u32(buffer + i, 0, 32);
+			retval = target_write_u32(target, MD_FLASH_DI, value);
+			if (retval != ERROR_OK)
+				goto finish;
+
+			for (unsigned int j = 0; j < 4; j++) {
+				retval = target_write_u32(target, MD_FLASH_CTRL, BIT(j));
+				if (retval != ERROR_OK)
+					goto finish;
+
+				/* Wait for Tads = 500 ns */
+				jtag_sleep(1);
+
+				flash_cmd |= MD_FLASH_PROG2_215;
+				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+				if (retval != ERROR_OK)
+					goto finish;
+
+				jtag_sleep(MD_FLASH_T_PROG);
+
+				flash_cmd &= ~MD_FLASH_PROG2_215;
+				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+				if (retval != ERROR_OK)
+					goto finish;
+
+				/* Wait for Tadh = 500 ns */
+				jtag_sleep(1);
+			}
+
+			bank->sectors[(offset + i) / sect_size].is_erased = 0;
+		}
+
+		buffer += page_write_size;
+		offset += page_write_size;
+		size   -= page_write_size;
+
+		/* Wait for Tpgh = 500 ns */
+		jtag_sleep(1);
+
+		flash_cmd &= ~MD_FLASH_WE_215;
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		jtag_sleep(MD_FLASH_T_RCV);
+
+		flash_cmd &= ~(MD_FLASH_CE_215 | MD_FLASH_PROG_215);
+		retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
+		if (retval != ERROR_OK)
+			goto finish;
+
+		/* Wait for Trw = 500 ns */
+		jtag_sleep(1);
+	}
+finish:
+	return retval;
+}
+
 static int mdr_write(struct flash_bank *bank, const uint8_t *buffer,
 		uint32_t offset, uint32_t count)
 {
 	struct target *target = bank->target;
 	struct mdr_flash_bank *mdr_info = bank->driver_priv;
-	unsigned int sect_size = bank->size / bank->num_sectors;
 	uint8_t *new_buffer = NULL;
 
 	if (bank->target->state != TARGET_HALTED) {
@@ -612,98 +922,24 @@ static int mdr_write(struct flash_bank *bank, const uint8_t *buffer,
 	if (retval != ERROR_OK)
 		goto reset_pg_and_lock;
 
-	if (mdr_info->chip_id == 215 || mdr_info->chip_id == 217) {
+	if (mdr_info->riscv && (mdr_info->chip_id == 215 || mdr_info->chip_id == 217)) {
 		retval = target_write_u32(target, MD_FLASH_CTRL, 0);
 		if (retval != ERROR_OK)
 			goto reset_pg_and_lock;
 	}
 
 	/* try using block write */
-	retval = mdr_write_block(bank, buffer, offset, count/4);
+	retval = mdr_write_block_hw(bank, buffer, offset, count / 4);
 
 	if (retval == ERROR_TARGET_RESOURCE_NOT_AVAILABLE) {
 		/* if block write failed (no sufficient working area),
 		 * we use normal (slow) single halfword accesses */
 		LOG_WARNING("Can't use block writes, falling back to single memory accesses");
 
-		while (count > 0) {
-			unsigned int page_size = mdr_info->chip_id == 217
-				? (1 << 9)  /* YADR[8:2] (512B) range for MDR1206FI */
-				: (1 < 12); /* 4096B range for others */
-			unsigned int page_mask = page_size - 1;
-			unsigned int page_start = offset & ~page_mask;
-			unsigned int page_write_size = page_start + page_size - offset;
-
-			if (count < page_write_size) {
-				page_write_size = count;
-			}
-
-			/* Latch MSB part of page address to be written in following cycle */
-			retval = target_write_u32(target, MD_FLASH_ADR, offset);
-			if (retval != ERROR_OK)
-				goto reset_pg_and_lock;
-
-			flash_cmd |= MD_FLASH_XE | MD_FLASH_PROG;
-			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-			if (retval != ERROR_OK)
-				goto reset_pg_and_lock;
-
-			jtag_sleep(MD_FLASH_Tnvs);
-
-			flash_cmd |= MD_FLASH_NVSTR;
-			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-			if (retval != ERROR_OK)
-				goto reset_pg_and_lock;
-
-			jtag_sleep(MD_FLASH_Tpgs);
-
-			for (unsigned int i = 0; i < page_write_size; i += 4) {
-				/* Latch word address (LSB part) to be written */
-				retval = target_write_u32(target, MD_FLASH_ADR, offset + i);
-				if (retval != ERROR_OK)
-					goto reset_pg_and_lock;
-
-				uint32_t value = buf_get_u32(buffer + i, 0, 32);
-				retval = target_write_u32(target, MD_FLASH_DI, value);
-				if (retval != ERROR_OK)
-					goto reset_pg_and_lock;
-
-				flash_cmd |= MD_FLASH_YE;
-				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-				if (retval != ERROR_OK)
-					goto reset_pg_and_lock;
-
-				jtag_sleep(MD_FLASH_Tprog);
-
-				flash_cmd &= ~MD_FLASH_YE;
-				retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-				if (retval != ERROR_OK)
-					goto reset_pg_and_lock;
-
-				/* Wait for Tadh = 20 ns */
-				jtag_sleep(0);
-			}
-
-			bank->sectors[offset/sect_size].is_erased = 0;
-
-			buffer += page_write_size;
-			offset += page_write_size;
-			count  -= page_write_size;
-
-			flash_cmd &= ~MD_FLASH_PROG;
-			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-			if (retval != ERROR_OK)
-				goto reset_pg_and_lock;
-
-			jtag_sleep(MD_FLASH_Tnvh);
-
-			flash_cmd &= ~(MD_FLASH_XE | MD_FLASH_NVSTR);
-			retval = target_write_u32(target, MD_FLASH_CMD, flash_cmd);
-			if (retval != ERROR_OK)
-				goto reset_pg_and_lock;
-
-			jtag_sleep(MD_FLASH_Trcv);
-		}
+		if (!mdr_info->riscv || mdr_info->chip_id != 215)
+			retval = mdr_write_block_sw(bank, buffer, offset, count);
+		else
+			retval = mdr_write_block_sw_215(bank, buffer, offset, count);
 	}
 
 reset_pg_and_lock:
@@ -854,12 +1090,12 @@ static int mdr_probe(struct flash_bank *bank)
 		case 0: /* Using default values */
 			break;
 		case 215:
-			if (! mdr_info->mem_type) {
+			if (!mdr_info->mem_type) {
 				/* Main memory */
 				bank->base = 0x10000000;
 				bank->size = 512 * 1024;    /* 512 KB */
 				mdr_info->sect_count = 512; /* 1 KB per sector */
-				mdr_info->bank_count = 1;   /* 512 KB per bank */
+				mdr_info->bank_count = 2;   /* 512 KB per bank */
 				LOG_INFO("MDR32RV: setting flash bank type 0 size @0x%08X to %u KiB",
 					 (unsigned int)bank->base, bank->size / 1024);
 			} else {
@@ -867,11 +1103,12 @@ static int mdr_probe(struct flash_bank *bank)
 				bank->base = 0x00020000;
 				bank->size = 15 * 1024;    /* 15 KB */
 				mdr_info->sect_count = 15; /* 1 KB per sector */
-				mdr_info->bank_count = 1;  /* 15 KB per bank */
+				mdr_info->bank_count = 2;  /* 15 KB per bank */
 				LOG_INFO("MDR32RV: setting flash bank type 1 size @0x%08X to %u KiB",
 					 (unsigned int)bank->base, bank->size / 1024);
 			}
-			mdr_info->ext_flags = MD_FLASH_TMR;
+			mdr_info->page_size = 128; /* 128B row (32 words) range for MDR1206FI ID 215 */
+			mdr_info->ext_flags = MD_FLASH_TMEN_215;
 			mdr_info->flash_write_code = mdr1206fi_215_flash_write_code;
 			mdr_info->flash_write_code_size = sizeof(mdr1206fi_215_flash_write_code);
 
@@ -883,10 +1120,10 @@ static int mdr_probe(struct flash_bank *bank)
 			mdr_info->t_nvh1 = 200;
 			mdr_info->t_prog = 7;
 			mdr_info->t_pgs = 70;
-			mdr_info->t_rcv = 10;
+			mdr_info->t_rcv = 50;
 			break;
 		case 217:
-			if (! mdr_info->mem_type) {
+			if (!mdr_info->mem_type) {
 				/* Main memory */
 				bank->base = 0x10000000;
 				bank->size = 512 * 1024;    /* 512 KB */
@@ -903,6 +1140,7 @@ static int mdr_probe(struct flash_bank *bank)
 				LOG_INFO("MDR32RV: setting flash bank type 1 size @0x%08X to %u KiB",
 					 (unsigned int)bank->base, bank->size / 1024);
 			}
+			mdr_info->page_size = (1 << 9); /* YADR[8:2] (512B) range for MDR1206FI ID 217 */
 			mdr_info->ext_flags = MD_FLASH_TMR;
 			mdr_info->flash_write_code = mdr1206fi_217_flash_write_code;
 			mdr_info->flash_write_code_size = sizeof(mdr1206fi_217_flash_write_code);
