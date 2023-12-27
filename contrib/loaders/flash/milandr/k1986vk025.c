@@ -16,24 +16,24 @@
 #endif
 
 typedef struct {
-	__IO uint32_t CMD; /*!< control register - 0x00 */
-	__IO uint32_t ADR; /*!< address register - 0x04 */
-	__IO uint32_t DI;  /*!< input data register - 0x08 */
-	__IO uint32_t DO;  /*!< output data register - 0x0C */
-	__IO uint32_t KEY; /*!< key register - 0x10 */
+	__IO uint32_t CMD;          /*!< control register - 0x00 */
+	__IO uint32_t ADR;          /*!< address register - 0x04 */
+	__IO uint32_t DI;           /*!< input data register - 0x08 */
+	__IO uint32_t DO;           /*!< output data register - 0x0C */
+	__IO uint32_t KEY;          /*!< key register - 0x10 */
 } MDR_EEPROM_CTRL_TYPEDEF;
 
 /* protection key */
-#define EEPROM_KEY_UNLOCK_KEY			(0x8AAA5551U)
-#define EEPROM_KEY_LOCK_KEY			(0x0U)
+#define EEPROM_KEY_UNLOCK_KEY		(0x8AAA5551U)
+#define EEPROM_KEY_LOCK_KEY		(0x0U)
 
-/*******************  Bit definition for FLASH_CMD register *******************/
-/* FLASH control (0 - normal mode, 1 - flash programming mode) */
+/*******************  Bit definition for EEPROM_CMD register *******************/
+/* EEPROM control (0 - normal mode, 1 - flash programming mode) */
 #define EEPROM_CMD_CON_POS              (0U)
 #define EEPROM_CMD_CON_MSK              (0x1U << EEPROM_CMD_CON_POS)            /*!< 0x00000001 */
 #define EEPROM_CMD_CON_NORMAL           (0x0U << EEPROM_CMD_CON_POS)            /*!< 0x00000000 */
 #define EEPROM_CMD_CON_PROGRAMMING      (0x1U << EEPROM_CMD_CON_POS)            /*!< 0x00000001 */
-/* FLASH delay (maximum speed of the FLASH is 30 MHz, use delay = 1 for greater core speed) */
+/* EEPROM delay (maximum speed of the EEPROM is 30 MHz, use delay = 1 for greater core speed) */
 #define EEPROM_CMD_DELAY_POS            (3U)
 #define EEPROM_CMD_DELAY_MSK            (0x7U << EEPROM_CMD_DELAY_POS)          /*!< 0x00000038 */
 #define EEPROM_CMD_DELAY_0_CYCLE        (0x0U << EEPROM_CMD_DELAY_POS)          /*!< 0x00000000 */
@@ -108,13 +108,22 @@ void write_flash(uint32_t  flash_base,
 		 uint32_t  target_address)
 {
 	/* NOTE: Flash programming was unlocked by caller */
-
 	MDR_EEPROM_CTRL_TYPEDEF * const MDR_EEPROM = (void *)flash_base;
 	register uint32_t cmd = MDR_EEPROM->CMD;
 
-	while (word_count--) {
+	while (word_count > 0) {
+		const unsigned int    page_size = (1 << 12); // 4096B range (sector)
+		register unsigned int i;
+		register unsigned int page_mask = page_size - 1;
+		register unsigned int page_start = target_address & ~page_mask;
+		register unsigned int page_write_size = (page_start + page_size - target_address) / 4;
+
+		if (word_count < page_write_size) {
+			page_write_size = word_count;
+		}
+
+		/* Latch MSB part of page address to be written in following cycle */
 		MDR_EEPROM->ADR = target_address;
-		MDR_EEPROM->DI  = *((uint32_t *)buffer_start);
 
 		MDR_EEPROM->CMD = cmd
 			| EEPROM_CMD_XE
@@ -131,25 +140,33 @@ void write_flash(uint32_t  flash_base,
 		/* Tpgs delay 10 uS */
 		delay_us(10);
 
-		MDR_EEPROM->CMD = cmd
-			| EEPROM_CMD_XE
-			| EEPROM_CMD_PROG
-			| EEPROM_CMD_NVSTR
-			| EEPROM_CMD_YE;
+		for (i = 0; i < page_write_size; i++) {
+			/* Latch word address (LSB part) to be written */
+			MDR_EEPROM->ADR = target_address + i * 4;
+			/* Latch data to be written */
+			MDR_EEPROM->DI  = *((uint32_t *)buffer_start + i);
 
-		/* Tprog delay 40 uS */
-		delay_us(40);
+			MDR_EEPROM->CMD = cmd
+				| EEPROM_CMD_XE
+				| EEPROM_CMD_PROG
+				| EEPROM_CMD_NVSTR
+				| EEPROM_CMD_YE;
 
-		MDR_EEPROM->CMD = cmd
-			| EEPROM_CMD_XE
-			| EEPROM_CMD_PROG
-			| EEPROM_CMD_NVSTR;
+			/* Tprog delay 40 uS */
+			delay_us(40);
 
-		target_address += 4;
-		buffer_start   += 4;
+			MDR_EEPROM->CMD = cmd
+				| EEPROM_CMD_XE
+				| EEPROM_CMD_PROG
+				| EEPROM_CMD_NVSTR;
 
-		/* Tpgh delay 20 ns */
-		delay_us(0);
+			/* Tpgh delay 20 ns */
+			delay_us(0);
+		}
+
+		target_address += page_write_size * 4;
+		buffer_start   += page_write_size * 4;
+		word_count     -= page_write_size;
 
 		MDR_EEPROM->CMD = cmd
 			| EEPROM_CMD_XE
@@ -159,10 +176,10 @@ void write_flash(uint32_t  flash_base,
 		delay_us(5);
 
 		MDR_EEPROM->CMD = cmd;
-	}
 
-	/* Trcv delay 10 uS */
-	delay_us(10);
+		/* Trcv delay 10 uS */
+		delay_us(10);
+	}
 
 	/* Succeeded */
 	asm volatile ("li a0, 0");

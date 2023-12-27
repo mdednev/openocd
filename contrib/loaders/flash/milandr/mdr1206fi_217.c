@@ -72,7 +72,7 @@ typedef struct {
 #define FLASH_CMD_NVSTR_POS            (13U)
 #define FLASH_CMD_NVSTR_MSK            (0x1U << FLASH_CMD_NVSTR_POS)          /*!< 0x00002000 */
 #define FLASH_CMD_NVSTR                FLASH_CMD_NVSTR_MSK
-/* EEPROM test mode (0 - test enable, 1 - no test) */
+/* FLASH test mode (0 - test enable, 1 - no test) */
 #define FLASH_CMD_TMR_POS              (14U)
 #define FLASH_CMD_TMR_MSK              (0x1U << FLASH_CMD_TMR_POS)            /*!< 0x00004000 */
 #define FLASH_CMD_TMR                  FLASH_CMD_TMR_MSK
@@ -110,13 +110,22 @@ void write_flash(uint32_t  flash_base,
 		 uint32_t  target_address)
 {
 	/* NOTE: Flash programming was unlocked by caller */
-
 	MDR_FLASH_CTRL_TYPEDEF * const MDR_FLASH = (void *)flash_base;
 	register uint32_t cmd = MDR_FLASH->CMD;
 
-	while (word_count--) {
+	while (word_count > 0) {
+		const unsigned int    page_size = (1 << 9); // YADR[8:2] (512B) range for MDR1206FI
+		register unsigned int i;
+		register unsigned int page_mask = page_size - 1;
+		register unsigned int page_start = target_address & ~page_mask;
+		register unsigned int page_write_size = (page_start + page_size - target_address) / 4;
+
+		if (word_count < page_write_size) {
+			page_write_size = word_count;
+		}
+
+		/* Latch MSB part of page address to be written in following cycle */
 		MDR_FLASH->ADR = target_address;
-		MDR_FLASH->DI  = *((uint32_t *)buffer_start);
 
 		MDR_FLASH->CMD = cmd
 			| FLASH_CMD_XE
@@ -133,25 +142,33 @@ void write_flash(uint32_t  flash_base,
 		/* Tpgs delay 10 uS */
 		delay_us(10);
 
-		MDR_FLASH->CMD = cmd
-			| FLASH_CMD_XE
-			| FLASH_CMD_PROG
-			| FLASH_CMD_NVSTR
-			| FLASH_CMD_YE;
+		for (i = 0; i < page_write_size; i++) {
+			/* Latch word address (LSB part) to be written */
+			MDR_FLASH->ADR = target_address + i * 4;
+			/* Latch data to be written */
+			MDR_FLASH->DI  = *((uint32_t *)buffer_start + i);
 
-		/* Tprog delay 40 uS */
-		delay_us(40);
+			MDR_FLASH->CMD = cmd
+				| FLASH_CMD_XE
+				| FLASH_CMD_PROG
+				| FLASH_CMD_NVSTR
+				| FLASH_CMD_YE;
 
-		MDR_FLASH->CMD = cmd
-			| FLASH_CMD_XE
-			| FLASH_CMD_PROG
-			| FLASH_CMD_NVSTR;
+			/* Tprog delay 40 uS */
+			delay_us(40);
 
-		target_address += 4;
-		buffer_start   += 4;
+			MDR_FLASH->CMD = cmd
+				| FLASH_CMD_XE
+				| FLASH_CMD_PROG
+				| FLASH_CMD_NVSTR;
 
-		/* Tpgh delay 20 ns */
-		delay_us(0);
+			/* Tpgh delay 20 ns */
+			delay_us(0);
+		}
+
+		target_address += page_write_size * 4;
+		buffer_start   += page_write_size * 4;
+		word_count     -= page_write_size;
 
 		MDR_FLASH->CMD = cmd
 			| FLASH_CMD_XE
@@ -161,10 +178,10 @@ void write_flash(uint32_t  flash_base,
 		delay_us(5);
 
 		MDR_FLASH->CMD = cmd;
-	}
 
-	/* Trcv delay 10 uS */
-	delay_us(10);
+		/* Trcv delay 10 uS */
+		delay_us(10);
+	}
 
 	/* Succeeded */
 	asm volatile ("li a0, 0");
