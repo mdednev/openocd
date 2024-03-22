@@ -96,7 +96,7 @@ static uint32_t convert_address(int mem_type, uint32_t offset)
 	uint32_t address = (offset >> 1) & ~0x3;
 
 	if (offset & (1UL << 2))
-		address |= mem_type ? (1UL << 18) : (1UL << 13);
+		address |= !mem_type ? (1UL << 18) : (1UL << 13);
 
 	return address;
 }
