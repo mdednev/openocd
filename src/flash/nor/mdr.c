@@ -110,6 +110,9 @@ struct mdr_flash_bank {
 	uint32_t      per_clock_flash_en;
 	uint32_t      per_clock_rst_clk;
 	uint32_t      chip_id;
+	uint32_t      calib_offs;
+	size_t        calib_size;
+	uint32_t      calib_values[8];
 
 	unsigned int  mem_type;
 	unsigned int  bank_count;
@@ -221,6 +224,9 @@ static const uint8_t mdr1206fi_217_flash_write_code[] = {
 	0x6f, 0xf0, 0x9f, 0xf7
 };
 
+static int mdr_write(struct flash_bank *bank, const uint8_t *buffer,
+		uint32_t offset, uint32_t count);
+
 /* flash bank <name> mdr <base> <size> 0 0 <target#> <type> <bank_count> <sect_count> */
 FLASH_BANK_COMMAND_HANDLER(mdr_flash_bank_command)
 {
@@ -236,6 +242,9 @@ FLASH_BANK_COMMAND_HANDLER(mdr_flash_bank_command)
 	mdr_info->riscv = !strcmp(target_type_name(bank->target), "riscv");
 	mdr_info->flash_base = MD_FLASH_REG_BASE;
 	mdr_info->chip_id = 0;
+	mdr_info->calib_offs = 0;
+	mdr_info->calib_size = 0;
+	memset(mdr_info->calib_values, 0xFF, sizeof(mdr_info->calib_values));
 
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[6], mdr_info->mem_type);
 	COMMAND_PARSE_NUMBER(uint, CMD_ARGV[7], mdr_info->bank_count);
@@ -515,6 +524,28 @@ reset_pg_and_lock:
 	retval2 = target_write_u32(target, MD_FLASH_KEY, 0);
 	if (retval == ERROR_OK)
 		retval = retval2;
+
+	if (mdr_info->mem_type && (retval == ERROR_OK)
+	    && (last == (bank->num_sectors - 1))
+	    && mdr_info->calib_offs && mdr_info->calib_size
+	    && mdr_info->riscv
+	    && (mdr_info->chip_id == 215 || mdr_info->chip_id == 217)) {
+		/* Restore calibration values in last sector of Boot/User flash memory */
+		retval2 = mdr_write(bank, (const uint8_t*)mdr_info->calib_values,
+				   bank->base + mdr_info->calib_offs,
+				   mdr_info->calib_size);
+		if (retval2) {
+			LOG_WARNING("MDR32RV: failed to write calibration values in flash.");
+			for (size_t i = 0; i < (mdr_info->calib_size + sizeof(uint32_t) - 1) / sizeof(uint32_t); ++i) {
+				LOG_WARNING("MDR32RV: value @0x%08X = 0x%08X",
+					  (uint32_t)(bank->base + mdr_info->calib_offs + i),
+					  mdr_info->calib_values[i]);
+			}
+		} else {
+			LOG_INFO("MDR32RV: restored erased calibration values in flash memory @0x%08X.",
+				  (uint32_t)(bank->base + mdr_info->calib_offs));
+		}
+	}
 
 	return retval;
 }
@@ -899,6 +930,26 @@ static int mdr_write(struct flash_bank *bank, const uint8_t *buffer,
 			new_buffer[count++] = 0xff;
 	}
 
+	/* Check if calibration values will be overwritten by requested write operation */
+	if (mdr_info->mem_type
+	    && mdr_info->calib_offs && mdr_info->calib_size
+	    && mdr_info->riscv && (mdr_info->chip_id == 215 || mdr_info->chip_id == 217)
+	    && (offset + count) > mdr_info->calib_offs) {
+		if (! new_buffer) {
+			new_buffer = malloc(count);
+			if (!new_buffer) {
+				LOG_ERROR("calibration bytes will be overwritten and no memory for padding buffer");
+				return ERROR_FAIL;
+			}
+			buffer = memcpy(new_buffer, buffer, count);
+		}
+		size_t write_size = (offset + count) >= (mdr_info->calib_offs + mdr_info->calib_size) ?
+			mdr_info->calib_size : (offset + count) - mdr_info->calib_offs;
+		memcpy(new_buffer + mdr_info->calib_offs - offset,
+		       mdr_info->calib_values,
+		       write_size);
+	}
+
 	uint32_t flash_cmd;
 	int retval, retval2;
 
@@ -1075,6 +1126,20 @@ static int mdr_probe(struct flash_bank *bank)
 		if (retval == ERROR_OK)
 			retval = target_read_u32(bank->target, MD_CHIP_ID_CTRL, &mdr_info->chip_id);
 
+		/* Try to read/write MD_FLASH_KEY register to check it is accessible in current MCU */
+		uint32_t flash_key = 0xDEADBEEF;
+		if (retval == ERROR_OK)
+			retval = target_write_u32(bank->target, MD_FLASH_KEY, 0xABADBABE);
+
+		if (retval == ERROR_OK)
+			retval = target_read_u32(bank->target, MD_FLASH_KEY, &flash_key);
+
+		if (retval == ERROR_OK && flash_key != 0xABADBABE)
+			retval = ERROR_FAIL;
+
+		if (retval == ERROR_OK)
+			retval = target_write_u32(bank->target, MD_FLASH_KEY, 0);
+
 		debug_level = cur_debug_level;
 
 		if (retval) {
@@ -1104,6 +1169,8 @@ static int mdr_probe(struct flash_bank *bank)
 				bank->size = 15 * 1024;    /* 15 KB */
 				mdr_info->sect_count = 15; /* 1 KB per sector */
 				mdr_info->bank_count = 2;  /* 15 KB per bank */
+				mdr_info->calib_offs = 0x00003BE0;
+				mdr_info->calib_size = 32; /* 28 calibration + 4 protection bytes */
 				LOG_INFO("MDR32RV: setting flash bank type 1 size @0x%08X to %u KiB",
 					 (unsigned int)bank->base, bank->size / 1024);
 			}
@@ -1137,6 +1204,8 @@ static int mdr_probe(struct flash_bank *bank)
 				bank->size = 16 * 1024;   /* 16 KB */
 				mdr_info->sect_count = 4; /* 4 KB per sector */
 				mdr_info->bank_count = 2; /* 8 KB per bank */
+				mdr_info->calib_offs = 0x00003FE0;
+				mdr_info->calib_size = 32; /* 28 calibration + 4 protection bytes */
 				LOG_INFO("MDR32RV: setting flash bank type 1 size @0x%08X to %u KiB",
 					 (unsigned int)bank->base, bank->size / 1024);
 			}
@@ -1158,6 +1227,30 @@ static int mdr_probe(struct flash_bank *bank)
 		default:
 			LOG_INFO("MDR32RV: CHIP_ID = %d is unsupported yet.", mdr_info->chip_id);
 			return ERROR_TARGET_INVALID;
+		}
+	}
+
+	if (mdr_info->calib_offs) {
+		retval = target_read_memory(bank->target,
+				       bank->base + mdr_info->calib_offs,
+				       1, mdr_info->calib_size,
+				       (uint8_t*)mdr_info->calib_values);
+		if (retval) {
+			LOG_INFO("MDR32RV: failed to read CHIP_IDE = %d calibration values @0x%08X, size %u",
+				 mdr_info->chip_id,
+				 (uint32_t)(bank->base + mdr_info->calib_offs),
+				 (unsigned)mdr_info->calib_size);
+			return ERROR_TARGET_INVALID;
+		}
+		if (LOG_LEVEL_IS(LOG_LVL_DEBUG)) {
+			LOG_DEBUG("Calibration base address = 0x%08X, size = %u",
+				  (uint32_t)(bank->base + mdr_info->calib_offs),
+				  (unsigned)mdr_info->calib_size);
+			for (size_t i = 0; i < (mdr_info->calib_size + sizeof(uint32_t) - 1) / sizeof(uint32_t); ++i) {
+				LOG_DEBUG("calib_value @0x%08X = 0x%08X",
+					  (uint32_t)(bank->base + mdr_info->calib_offs + i),
+					  mdr_info->calib_values[i]);
+			}
 		}
 	}
 
