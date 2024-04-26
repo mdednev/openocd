@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 /***************************************************************************
- *   Copyright (C) 2023 by Max A. Dednev                                   *
- *   m.dednev@yandex.ru                                                    *
+ *   Copyright (C) 2024 by Max A. Dednev                                   *
+ *   mdednev@yandex.ru                                                    *
  ***************************************************************************/
 
 #include <stdint.h>
@@ -21,8 +21,6 @@ typedef struct {
 	__IO uint32_t DI;           /*!< input data register - 0x08 */
 	__IO uint32_t DO;           /*!< output data register - 0x0C */
 	__IO uint32_t KEY;          /*!< key register - 0x10 */
-	__IO uint32_t RESERVED;     /*!< reserved - 0x14 */
-	__IO uint32_t CHIP_ID_CTRL; /*!< chip ID register - 0x18 */
 } MDR_FLASH_CTRL_TYPEDEF;
 
 /* protection key */
@@ -31,51 +29,63 @@ typedef struct {
 
 /*******************  Bit definition for FLASH_CMD register *******************/
 /* FLASH control (0 - normal mode, 1 - flash programming mode) */
-#define FLASH_CMD_CON_POS              (0U)
-#define FLASH_CMD_CON_MSK              (0x1U << FLASH_CMD_CON_POS)            /*!< 0x00000001 */
-#define FLASH_CMD_CON_NORMAL           (0x0U << FLASH_CMD_CON_POS)            /*!< 0x00000000 */
-#define FLASH_CMD_CON_PROGRAMMING      (0x1U << FLASH_CMD_CON_POS)            /*!< 0x00000001 */
+#define FLASH_CMD_CON_Pos              (0U)
+#define FLASH_CMD_CON_Msk              (0x1U << FLASH_CMD_CON_Pos)
+#define FLASH_CMD_CON_NORMAL           (0x0U << FLASH_CMD_CON_Pos)
+#define FLASH_CMD_CON_PROGRAMMING      (0x1U << FLASH_CMD_CON_Pos)
 /* FLASH delay (maximum speed of the FLASH is 30 MHz, use delay = 1 for greater core speed) */
-#define FLASH_CMD_DELAY_POS            (3U)
-#define FLASH_CMD_DELAY_MSK            (0x7U << FLASH_CMD_DELAY_POS)          /*!< 0x00000038 */
-#define FLASH_CMD_DELAY_0_CYCLE        (0x0U << FLASH_CMD_DELAY_POS)          /*!< 0x00000000 */
-#define FLASH_CMD_DELAY_1_CYCLE        (0x1U << FLASH_CMD_DELAY_POS)          /*!< 0x00000008 */
+#define FLASH_CMD_DELAY_Pos            (3U)
+#define FLASH_CMD_DELAY_Msk            (0x3U << FLASH_CMD_DELAY_Pos)
+#define FLASH_CMD_DELAY_0_CYCLE        (0x0U << FLASH_CMD_DELAY_Pos)
+#define FLASH_CMD_DELAY_1_CYCLE        (0x1U << FLASH_CMD_DELAY_Pos)
 /* upper part of the address [17:9] feeding enable (0 - disabled, 1 - enabled) */
-#define FLASH_CMD_XE_POS               (6U)
-#define FLASH_CMD_XE_MSK               (0x1U << FLASH_CMD_XE_POS)             /*!< 0x00000040 */
-#define FLASH_CMD_XE                   FLASH_CMD_XE_MSK
+#define FLASH_CMD_XE_Pos               (6U)
+#define FLASH_CMD_XE_Msk               (0x1U << FLASH_CMD_XE_Pos)
+#define FLASH_CMD_XE                   FLASH_CMD_XE_Msk
 /* lower part of the address [8:2] feeding enable (0 - disabled, 1 - enabled) */
-#define FLASH_CMD_YE_POS               (7U)
-#define FLASH_CMD_YE_MSK               (0x1U << FLASH_CMD_YE_POS)             /*!< 0x00000080 */
-#define FLASH_CMD_YE                   FLASH_CMD_YE_MSK
+#define FLASH_CMD_YE_Pos               (7U)
+#define FLASH_CMD_YE_Msk               (0x1U << FLASH_CMD_YE_Pos)
+#define FLASH_CMD_YE                   FLASH_CMD_YE_Msk
 /* readout apmlifier (0 - disabled, 1 - enabled) */
-#define FLASH_CMD_SE_POS               (8U)
-#define FLASH_CMD_SE_MSK               (0x1U << FLASH_CMD_SE_POS)             /*!< 0x00000100 */
-#define FLASH_CMD_SE                   FLASH_CMD_SE_MSK
+#define FLASH_CMD_SE_Pos               (8U)
+#define FLASH_CMD_SE_Msk               (0x1U << FLASH_CMD_SE_Pos)
+#define FLASH_CMD_SE                   FLASH_CMD_SE_Msk
 /* information block selection (0 - main block, 1 - information block) */
-#define FLASH_CMD_IFREN_POS            (9U)
-#define FLASH_CMD_IFREN_MSK            (0x1U << FLASH_CMD_IFREN_POS)          /*!< 0x00000200 */
-#define FLASH_CMD_IFREN                FLASH_CMD_IFREN_MSK
-/* erase page (0 - do not erase, 1 - erase) (lower part of the address [8:2] do no sence here) */
-#define FLASH_CMD_ERASE_POS            (10U)
-#define FLASH_CMD_ERASE_MSK            (0x1U << FLASH_CMD_ERASE_POS)          /*!< 0x00000400 */
-#define FLASH_CMD_ERASE                FLASH_CMD_ERASE_MSK
+#define FLASH_CMD_IFREN_Pos            (9U)
+#define FLASH_CMD_IFREN_Msk            (0x1U << FLASH_CMD_IFREN_Pos)
+#define FLASH_CMD_IFREN                FLASH_CMD_IFREN_Msk
+/* erase page (0 - do not erase, 1 - erase) (lower part of the address [8:2] do no sense here) */
+#define FLASH_CMD_ERASE_Pos            (10U)
+#define FLASH_CMD_ERASE_Msk            (0x1U << FLASH_CMD_ERASE_Pos)
+#define FLASH_CMD_ERASE                FLASH_CMD_ERASE_Msk
 /* mass erase whole memory (0 - do not erase, 1 - erase) */
-#define FLASH_CMD_MAS1_POS             (11U)
-#define FLASH_CMD_MAS1_MSK             (0x1U << FLASH_CMD_MAS1_POS)           /*!< 0x00000800 */
-#define FLASH_CMD_MAS1                 FLASH_CMD_MAS1_MSK
+#define FLASH_CMD_MAS1_Pos             (11U)
+#define FLASH_CMD_MAS1_Msk             (0x1U << FLASH_CMD_MAS1_Pos)
+#define FLASH_CMD_MAS1                 FLASH_CMD_MAS1_Msk
 /* write data from FLASH_DI to address [17:2], (0 - do not write, 1 - write) */
-#define FLASH_CMD_PROG_POS             (12U)
-#define FLASH_CMD_PROG_MSK             (0x1U << FLASH_CMD_PROG_POS)           /*!< 0x00001000 */
-#define FLASH_CMD_PROG                 FLASH_CMD_PROG_MSK
+#define FLASH_CMD_PROG_Pos             (12U)
+#define FLASH_CMD_PROG_Msk             (0x1U << FLASH_CMD_PROG_Pos)
+#define FLASH_CMD_PROG                 FLASH_CMD_PROG_Msk
 /* write / read operation (0 - read, 1 - write/erase) */
-#define FLASH_CMD_NVSTR_POS            (13U)
-#define FLASH_CMD_NVSTR_MSK            (0x1U << FLASH_CMD_NVSTR_POS)          /*!< 0x00002000 */
-#define FLASH_CMD_NVSTR                FLASH_CMD_NVSTR_MSK
+#define FLASH_CMD_NVSTR_Pos            (13U)
+#define FLASH_CMD_NVSTR_Msk            (0x1U << FLASH_CMD_NVSTR_Pos)
+#define FLASH_CMD_NVSTR                FLASH_CMD_NVSTR_Msk
 /* FLASH test mode (0 - test enable, 1 - no test) */
-#define FLASH_CMD_TMR_POS              (14U)
-#define FLASH_CMD_TMR_MSK              (0x1U << FLASH_CMD_TMR_POS)            /*!< 0x00004000 */
-#define FLASH_CMD_TMR                  FLASH_CMD_TMR_MSK
+#define FLASH_CMD_TMR_Pos              (14U)
+#define FLASH_CMD_TMR_Msk              (0x1U << FLASH_CMD_TMR_Pos)
+#define FLASH_CMD_TMR                  FLASH_CMD_TMR_Msk
+
+/* FLASH parameters with a safe margin of ~7% (HSI spread). */
+#define FLASH_TNVS_US   (6)
+#define FLASH_TNVH_US   (6)
+#define FLASH_TNVH1_US  (107)
+#define FLASH_TPGS_US   (11)
+#define FLASH_TRCV_US   (11)
+#define FLASH_THV_US    (16000)
+
+#define FLASH_TPROG_US  (30)
+#define FLASH_TERASE_US (30000)
+#define FLASH_TME_US    (30000)
 
 #define time_after(a, b) ((int32_t)(b) - (int32_t)(a) < 0)
 
@@ -97,13 +107,13 @@ static inline void delay_cycles(uint32_t cycles)
 #define delay_us(us) delay_cycles((CPU_FREQ_HZ / 1000 / 1000) * (us))
 
 __attribute__((naked))
-void write_flash(uint32_t  flash_base,
+void flash_write(uint32_t  flash_base,
 		 uint32_t  word_count,
 		 uint8_t   *buffer_start,
 		 uint8_t   *buffer_end,
 		 uint32_t  target_address);
 
-void write_flash(uint32_t  flash_base,
+void flash_write(uint32_t  flash_base,
 		 uint32_t  word_count,
 		 uint8_t   *buffer_start,
 		 uint8_t   *buffer_end,
@@ -114,7 +124,7 @@ void write_flash(uint32_t  flash_base,
 	register uint32_t cmd = MDR_FLASH->CMD;
 
 	while (word_count > 0) {
-		const unsigned int    page_size = (1 << 9); // YADR[8:2] (512B) range for MDR1206FI ID 217
+		const unsigned int    page_size = (1 << 12); // 4096B range (sector)
 		register unsigned int i;
 		register unsigned int page_mask = page_size - 1;
 		register unsigned int page_start = target_address & ~page_mask;
@@ -130,16 +140,14 @@ void write_flash(uint32_t  flash_base,
 			| FLASH_CMD_XE
 			| FLASH_CMD_PROG;
 
-		/* Tnvs delay 5 uS */
-		delay_us(5);
+		delay_us(FLASH_TNVS_US);
 
 		MDR_FLASH->CMD = cmd
 			| FLASH_CMD_XE
 			| FLASH_CMD_PROG
 			| FLASH_CMD_NVSTR;
 
-		/* Tpgs delay 10 uS */
-		delay_us(10);
+		delay_us(FLASH_TPGS_US);
 
 		for (i = 0; i < page_write_size; i++) {
 			/* Latch word address (LSB part) to be written */
@@ -153,8 +161,7 @@ void write_flash(uint32_t  flash_base,
 				| FLASH_CMD_NVSTR
 				| FLASH_CMD_YE;
 
-			/* Tprog delay 40 uS */
-			delay_us(40);
+			delay_us(FLASH_TPROG_US);
 
 			MDR_FLASH->CMD = cmd
 				| FLASH_CMD_XE
@@ -173,13 +180,11 @@ void write_flash(uint32_t  flash_base,
 			| FLASH_CMD_XE
 			| FLASH_CMD_NVSTR;
 
-		/* Tnvh delay 5 uS */
-		delay_us(5);
+		delay_us(FLASH_TNVH_US);
 
 		MDR_FLASH->CMD = cmd;
 
-		/* Trcv delay 10 uS */
-		delay_us(10);
+		delay_us(FLASH_TRCV_US);
 	}
 
 	/* Succeeded */
